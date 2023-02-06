@@ -1,0 +1,506 @@
+// Programa   : Ticket Epson
+// Fecha/Hora : 02/10/2006 17:10:58
+// Propósito  : Emitir Ticket Fiscal Impresora Epson 
+// Modificado : Marlon Ramos 05-08-2008 (Se agrega al inner join de dpdoccli la fecha y la hora
+//                                       para evitar al cambiar de usuario se impriman tickets
+//                                       kilométricos con productos de otras fechas y/o usuarios)
+//                           11-08-2008 (Generar devoluciones desde punto de venta trayendo información
+//                                       del ticket afectado por la devolución)
+//                           20-08-2008 (Evitar descuentos globales erróneos (Ej:descontaba 50% en lugar de 5%))
+//                           26-08-2008 (Imprimir seriales)
+// Llamado por: POSFIS.EXE
+// Aplicación : VENTAS Y CTAS X COBRAR
+// Tabla      : DPMOVINV,DPCLIENTES,DPDOCCLI
+// Fecha/Hora : 14/10/2006 16:30:58
+
+#INCLUDE "DPXBASE.CH"
+#INCLUDE "FILEIO.CH"
+
+PROCE MAIN(cCodTick,cTipDoc,nPagado,dFecha,cHora,cClicero,cRifcero,cDircero)
+
+LOCAL cFile:="dpticket.txt",oTable,cNomVald,cCant,cPrecio,cTasa,nDesc:=0,nDescT,cMemo:="",cPagado,cUS,nDocOtr:=0,nDocDcto:=0
+LOCAL cTicket:="",cTicketErr,cDesc,cDescT,cDescri,cDescriV:="",nHandler,cPrec,cDescu,nPrecio,nPreTotal:=0,cNombre,cRIF
+LOCAL cNumSer:="",cFecha:="",I,cAuxSerial,cHorad:="",iFecha:=""
+LOCAL cSerialFis, cFacAsocia, cSerialFec, cFacAsMovim
+LOCAL cDir,cDir1
+LOCAL cIva:=STRTRAN(TRAN(EJECUTAR("IVACAL","GN",3,DPFECHA()),"99.99"),".") // IVA Tasa General, 12.00 Muestra 1200
+
+//LOCAL cCodTick:="0000000996", nPagado:=0,cTipDoc:="TIK"  
+
+
+DEFAULT cClicero:="",cRifcero:="",cDircero:="",cDocAsoc:=""
+
+//?? cCodTick,cTipDoc,nPagado,dFecha,cHora,cClicero,cRifcero,cDircero, "codTiket, Tipo de Doc, npagado, dfecha,chora,cclicero, crifcero"
+/*
+   oTable:=OpenTable(" SELECT DOC_NUMERO,MOV_CODIGO,INV_DESCRI,MOV_TOTAL,DOC_OTROS,DOC_DCTO,MOV_PRECIO,MOV_DESCUE,IF(MSR_SERIAL<>'',1,MOV_CANTID) AS MOV_CANTID,"+;
+                     " MOV_IVA,CCG_NOMBRE,CCG_RIF,DOC_FACAFE,DOC_IMPRES,DOC_CODIGO,MSR_SERIAL"+;
+			   " FROM DPMOVINV INNER JOIN DPINV ON MOV_CODIGO=INV_CODIGO"+;
+			   " LEFT   JOIN DPMOVSERIAL ON MOV_DOCUME=MSR_NUMDOC AND MOV_ITEM=MSR_ITEM AND MOV_TIPDOC=MSR_TIPDOC "+;
+			   " INNER  JOIN DPDOCCLI ON MOV_CODSUC=DOC_CODSUC AND MOV_TIPDOC=DOC_TIPDOC AND DOC_NUMERO=MOV_DOCUME AND DOC_TIPTRA='D' AND DOC_FECHA=MOV_FECHA AND DOC_HORA=MOV_HORA"+;
+			   " LEFT   JOIN DPCLIENTESCERO ON CCG_CODSUC=DOC_CODSUC AND CCG_TIPDOC=DOC_TIPDOC AND CCG_NUMDOC=DOC_NUMERO "+;
+			   " WHERE MOV_TIPDOC"+GetWhere("=",cTipDoc     )+;
+			   " AND   MOV_USUARI"+GetWhere("=",oDp:cUsuario)+;
+			   " AND   MOV_DOCUME"+GetWhere("=",cCodTick    )+;
+			   " AND   MOV_FECHA"+GetWhere("=",dFecha)+;
+			   " AND   MOV_HORA"+GetWhere("=",cHora),.T.)
+*/
+
+
+   oTable:=OpenTable(" SELECT DOC_NUMERO,MOV_CODIGO,MOV_ASODOC,DOC_DOCORG,DOC_CODSUC,INV_DESCRI,MOV_TOTAL,"+;
+                  " DOC_OTROS,DOC_DCTO,MOV_PRECIO,MOV_DESCUE,IF(MSR_SERIAL<>'',1,MOV_CANTID) AS MOV_CANTID,"+;
+                  " MOV_IVA,CCG_NOMBRE,CCG_RIF,CCG_DIR1,CCG_DIR2,CLI_NOMBRE,CLI_RIF,DOC_CODVEN,DOC_FACAFE,DOC_IMPRES,DOC_CODIGO,MSR_SERIAL"+;
+			   " FROM DPMOVINV INNER JOIN DPINV ON MOV_CODIGO=INV_CODIGO"+;
+			   " LEFT   JOIN DPMOVSERIAL ON MOV_DOCUME=MSR_NUMDOC AND MOV_ITEM=MSR_ITEM AND MOV_TIPDOC=MSR_TIPDOC AND MOV_CODCTA=MSR_CODCTA AND MOV_CODSUC=MSR_CODSUC "+;
+			   " INNER  JOIN DPDOCCLI ON MOV_CODSUC=DOC_CODSUC AND MOV_TIPDOC=DOC_TIPDOC AND DOC_NUMERO=MOV_DOCUME AND DOC_TIPTRA='D' AND DOC_FECHA=MOV_FECHA AND DOC_HORA=MOV_HORA"+;
+			   " LEFT   JOIN DPCLIENTESCERO ON CCG_CODSUC=DOC_CODSUC AND CCG_TIPDOC=DOC_TIPDOC AND CCG_NUMDOC=DOC_NUMERO "+;
+                 " LEFT   JOIN DPCLIENTES     ON CLI_CODIGO=DOC_CODIGO "+;
+			   " WHERE MOV_TIPDOC"+GetWhere("=",cTipDoc     )+;
+			   " AND   MOV_USUARI"+GetWhere("=",oDp:cUsuario)+;
+			   " AND   MOV_DOCUME"+GetWhere("=",cCodTick    )+;
+			   " AND   MOV_FECHA"+GetWhere("=",dFecha)+;
+			   " AND   MOV_HORA"+GetWhere("=",cHora),.T.)  
+ 
+ //? dFecha, "Dfeacha"
+ // oTable:Browse()
+
+   IF oTable:Eof()
+      Alert("No se Encontró información")
+      oTable:End()
+      RETURN
+   ENDIF
+
+/*
+   IF oTable:DOC_IMPRES
+      MensajeErr("Ticket: "+cCodTick+" ya se Imprimió")
+      oTable:End()
+      RETURN .F.
+   ENDIF
+*/
+// Fin 05-08-2008 Marlon Ramos
+
+
+// cClicero,cRifcero,cDircero,"cClicero,cRifcero,cDircero"
+
+//
+// Inicia el Documento
+//
+
+    /* 19-08-2008 Marlon Ramos (Cuando es llamado por dpfacturav aún no ha grabado en la tabla DPCLIENTESCERO
+    cNombre :=ALLTRIM(PADR(oTable:CCG_NOMBRE,20))
+    cRIF    :=ALLTRIM(PADR(oTable:CCG_RIF,20))
+    */
+     
+    cUS     :=oDp:cUsuario
+
+    cNombre :=ALLTRIM(PADR(IIF(!EMPTY(cRifcero),cClicero,oTable:CCG_NOMBRE),IIF("PF-300"$oDp:cImpFiscal,38,20)))
+    cRIF    :=ALLTRIM(PADR(IIF(!EMPTY(cRifcero),cRifcero,oTable:CCG_RIF),20))
+    cDir    :=ALLTRIM(PADR(IIF(!EMPTY(cRifcero),cDircero,oTable:CCG_DIR1),40))
+    cDir1   :=ALLTRIM(PADR(IIF(!EMPTY(cRifcero),cDircero,oTable:CCG_DIR2),40))
+
+
+//    cDir    :=IIF(!EMPTY(cRifcero),ALLTRIM(cDircero),cDir)
+
+    
+    IF EMPTY(cNombre)    // cCodCli<>"0000000000"
+        cNombre:=ALLTRIM(PADR(MYSQLGET("DPCLIENTES","CLI_NOMBRE,CLI_RIF,CLI_DIR1,CLI_DIR2,CLI_DIR3","CLI_CODIGO"+GetWhere("=",oTable:DOC_CODIGO)),IIF("PF-300"$oDp:cImpFiscal,38,20)))
+          IF !Empty(oDp:aRow)
+             cRif:=ALLTRIM(PADR(oDp:aRow[2],20))
+          ENDIF
+        cDir:=ALLTRIM(PADR(oDp:aRow[3],40))
+        cDir1:=ALLTRIM(PADR(oDp:aRow[4],40))
+    ENDIF
+    
+//? cDir,"cDir"
+
+// RETURN .T.
+    cNombre:=ValidAscii(cNombre)
+   // Fin 19-08-2008 Marlon Ramos 
+
+ //? cNombre,"nombre"
+   // 11-08-2008 Marlon Ramos (Realizar DEVOLUCIONES desde Factura y Punto de venta Modificado DataPro)
+
+    IF cTipDoc = "DEV"
+
+
+// ? "entra devolucion"
+      // Serial de la Impresora q Emitio el Ticket Modificada a DOC_NUMERO ya q no lo llevaba en Devolucion de Venta
+      // antes  cSerialFis:=ALLTRIM(MYSQLGET("DPEQUIPOSPOS","EPV_IMPFIS","EPV_SERIEF='"+LEFT(oTable:DOC_FACAFE,1)+"'"))
+      cSerialFis:=ALLTRIM(MYSQLGET("DPEQUIPOSPOS","EPV_IMPFIS","EPV_SERIEF='"+LEFT(oTable:DOC_NUMERO,1)+"'"))
+
+     //?? cSerialFis, "Serial Impresora"
+
+     //Factura Asociada por los momentos al imprimir no lo hace por Devolucion de Venta, en Pto d Vta Sip (DataPro)
+     //cFacAsocia:=oTable:MOV_ASODOC .OR. cFacAsocia:=oTable:DOC_FACAFE
+     IF oTable:DOC_DOCORG="P"
+        cFacAsocia:=oTable:DOC_FACAFE
+     ENDIF
+
+     IF oTable:DOC_DOCORG="V"
+        cFacAsocia:=oTable:MOV_ASODOC
+     ENDIF
+   
+//     ELSE
+      cFacAsocia:=oTable:MOV_ASODOC
+//   ENDIF
+
+//   ?? cFacAsocia
+
+   cFacAsMovim:=oTable:MOV_ASODOC
+ // ?? cFacAsMovim
+
+        IF ValType(oPos:dHoraAsoc)!="C"
+           // ?? "DPDOCCLI no igual a C",cCodTick, oTable:DOC_FACAFE," ",oTable:DOC_CODIGO,"  ",oTable:DOC_CODSUC
+
+           //  cNumSer:=SQLGET("DPDOCCLI","DOC_CONDIC,DOC_FECHA,DOC_HORA,DOC_FACAFE","DOC_NUMERO"+GetWhere("=",cCodTick)+;
+           //                  " AND DOC_TIPDOC"+GetWhere("=","FAV")+;
+           //                  " AND DOC_CODIGO"+GetWhere("=",oTable:DOC_CODIGO)+;
+           //                  " AND DOC_CODSUC"+GetWhere("=",oTable:DOC_CODSUC))
+
+           cNumSer:=ALLTRIM(SQLGET("DPDOCCLI","DOC_CONDIC,DOC_FECHA,DOC_HORA","DOC_NUMERO"+GetWhere("=",cCodTick)+;
+                           " AND DOC_TIPDOC"+GetWhere("=","FAV")+;
+                           " AND DOC_CODIGO"+GetWhere("=",oTable:DOC_CODIGO)+;
+                           " AND DOC_CODSUC"+GetWhere("=",oTable:DOC_CODSUC)))
+
+// ? cNumSer, "cNumSer rntrsa = C" 
+           IF !Empty(oDp:aRow)
+              cFecha :=LEFT(DTOC(oDp:aRow[2]),6)+RIGHT(DTOC(oDp:aRow[2]),2)
+              cHorad :=LEFT(DTOC(oDp:aRow[3]),6)+RIGHT(DTOC(oDp:aRow[3]),2)
+           ENDIF
+
+        //cFecha :=LEFT(DTOC(oDocCli:dFechAsoc),6)+RIGHT(DTOC(oDocCli:dFechAsoc),2)
+        //cFecha :=LEFT(DTOC(dFecha),6)+RIGHT(DTOC(dFecha),2)
+       //?? cFecha, "cfecha en factura"
+
+       //cFecha :=LEFT(DTOC(dFecha),6)+RIGHT(DTOC(dFecha),2)
+       //?? iFecha, "iFecha"
+       //cHorad :=cHora
+        ELSE
+/*
+   IF !Empty(oDp:aRow)
+      cFecha :=LEFT(DTOC(oDp:aRow[2]),6)+RIGHT(DTOC(oDp:aRow[2]),2)
+     ?? cFecha, "DENTRO DEROW"
+      cHora  :=oDp:aRow[3]
+   ENDIF
+*/
+           cFecha :=LEFT(DTOC(oPos:dFechAsoc),6)+RIGHT(DTOC(oPos:dFechAsoc),2)
+           //?? cFecha
+           // antes Activo cNumSer:=SQLGET("DPDOCCLI","DOC_CONDIC","DOC_NUMERO"+GetWhere("=",oTable:DOC_FACAFE)+" AND DOC_TIPDOC"+GetWhere("=","TIK")+" AND DOC_FECHA"+GetWhere("=",oPos:dFechAsoc)+" AND "+"DOC_HORA"+GetWhere("=",oPos:dHoraAsoc))
+           // ?? cNumSer, "cNumSer"
+           cHorad :=oPos:dHoraAsoc
+           //?? cHorad
+  ENDIF
+
+        IF oTable:CCG_NOMBRE<>""
+           cTicket:=cTicket+"<ABRIR_DEVOLUCION,.,.,"+oTable:DOC_FACAFE+","+cFecha+","+cHorad+">"+CRLF
+           //cTicket:=cTicket+"<ABRIR_DEVOLUCION,.,.,"+oTable:DOC_FACAFE+","+LEFT(cNumSer,10)+","+cFecha+","+cHorad+">"+CRLF
+        ELSE
+           //cTicket:=cTicket+"<ABRIR_DEVOLUCION,"+cNombre+","+cRIF+","+oTable:DOC_FACAFE+","+LEFT(cNumSer,10)+","+cFecha+","+cHorad+">"+CRLF
+           cTicket:=cTicket+"<ABRIR_DEVOLUCION,"+cNombre+","+cRIF+","+cFacAsocia+","+LEFT(cSerialFis,10)+","+cFecha+","+cHorad+">"+CRLF
+           //cTicket:=cTicket+"<ABRIR_DEVOLUCION,"+cNombre+","+cRIF+","+oTable:DOC_FACAFE+","+LEFT(cSerialFis,10)+","+cFecha+","+cHorad+">"+CRLF
+        ENDIF
+         cTicket:=cTicket+"<TEXTO_CF,"+REPL(" ",2)+"NOTA CREDITO #: "+cCodTick+" Vend.: "+cUS+",0>"+CRLF 
+        //cTicket:=cTicket+"<TEXTO_CF,NOTA DE CREDITO #: "+cCodTick+" Vend: "+cUS+",0>"+CRLF 
+         cTicket:=cTicket+"<TEXTO_CF,"+REPL("-",40)+",0>"+CRLF
+
+
+
+/*
+ cTicket:=cTicket+"<TEXTO_CF,"+REPL(" ",6)+"Nota Credito #: "+cCodTick+" US:"+cUS+",0>"+CRLF 
+    //NUMERO DE DEVOLUCION DEL SISTEMA CARREÑO
+    cTicket:=cTicket+"<TEXTO_CF,NOTA CREDITO #: "+cCodTick+" VEND.:"+cUS+",0>"+CRLF 
+    cTicket:=cTicket+"<TEXTO_CF,"+REPL("-",40)+",0>"+CRLF
+*/
+// ? cTicket, "cticket DEV  YYY"
+
+   WHILE !oTable:Eof()
+
+    cCant    :=ALLTRIM(STR(oTable:MOV_CANTID*1000,8,0))
+    nPrecio  :=(oTable:MOV_TOTAL/oTable:MOV_CANTID)
+    cPrecio  :=ALLTRIM(STR(nPrecio*100,8,0))
+    cTasa    :=AllTRIM(STR(IIF(oTable:MOV_IVA<>0,cTasa:=1,cTasa:=0)))
+    // 03-10-2008 Marlon Ramos cDescri  :=ALLTRIM(PADR(oTable:INV_DESCRI,20))
+    cDescri  :=ALLTRIM(PADR(oTable:INV_DESCRI,IIF("PF-300"$oDp:cImpFiscal,36,20)))
+
+// ? cdescri,"descripcion"
+
+    IF(oTable:MOV_DESCUE<>0,nDesc:=PORCEN(oTable:MOV_PRECIO*oTable:MOV_CANTID,oTable:MOV_DESCUE)) 
+    
+/*
+        IF !EMPTY(oTable:MSR_SERIAL)
+           cAuxSerial:=ALLTRIM(oTable:MSR_SERIAL)
+         //  cDescri   :=cDescri
+        ENDIF
+*/
+      cDescriV:=ValidAscii(cDescri)
+      //? cDescriV,"cDescriV"
+      cTicket:=cTicket+"<ITEM_CF,"+cDescriV+","+cCant+","+cPrecio+","+cTasa+",0,0>"+CRLF
+
+      /* posibilidad de Imprimir el Serial Devuelto 
+      IF !EMPTY(oTable:MSR_SERIAL)
+         cTicket:=cTicket+"<TEXTO_CF,Serial: "+cAuxSerial+",0>"+CRLF
+      ENDIF
+      */
+
+    oTable:DbSkip()
+  ENDDO 
+  oTable:Gotop()
+
+//
+// Cierra el Documento
+//
+
+	cTicket:=cTicket+"<CERRAR_CF>"+CRLF
+	cTicket:=cTicket+"<END>"+CRLF
+
+    ELSE
+  // Fin 11-08-2008 Marlon Ramos
+ 
+        IF oDp:cDisp_lGaveta
+           cTicket:=cTicket+"<GAVETA_A>"+CRLF
+        ENDIF
+
+        IF oTable:CCG_NOMBRE<>""
+           cTicket:=cTicket+"<ABRIR_CF>"+CRLF
+        ELSE
+           cTicket:=cTicket+"<ABRIR_CF,"+cNombre+","+cRIF+">"+CRLF
+        ENDIF
+
+        cTicket:=cTicket+"<TEXTO_CF,"+REPL(" ",1)+"Dir.: "+cDir+",0>"+CRLF
+        cTicket:=cTicket+"<TEXTO_CF,"+REPL(" ",1)+""+cDir1+",0>"+CRLF 
+        cTicket:=cTicket+"<TEXTO_CF,"+REPL("-",47)+",0>"+CRLF 
+        cTicket:=cTicket+"<TEXTO_CF,"+REPL(" ",1)+"Docum. #: "+cCodTick+" Vend.: "+cUS+",0>"+CRLF 
+        cTicket:=cTicket+"<TEXTO_CF,"+REPL("-",47)+",0>"+CRLF
+
+//? cTicket,"cTicket"
+
+     ENDIF
+//	
+// Valores del Detalle del Documento
+//
+
+   WHILE !oTable:Eof()
+ 
+ 	nPreTotal:=nPreTotal+oTable:MOV_TOTAL
+	cCant    :=ALLTRIM(STR(oTable:MOV_CANTID*1000,8,0))
+	nPrecio  :=(oTable:MOV_TOTAL/oTable:MOV_CANTID)
+	cPrecio  :=ALLTRIM(STR(nPrecio*100,8,0))
+	cPrec    :=ALLTRIM(STR(oTable:MOV_PRECIO*oTable:MOV_CANTID,10,2))
+	cDescu   :=ALLTRIM(STR(oTable:MOV_DESCUE,8,2))
+	cTasa    :=AllTRIM(STR(IIF(oTable:MOV_IVA<>0,cTasa:=1,cTasa:=0)))
+	cDescri  :=ALLTRIM(PADR(oTable:INV_DESCRI,IIF("PF-300"$oDp:cImpFiscal,36,20)))
+
+    //?? "ENTRA EN WHILE"     
+    //?? cDescri,cCant,cPrecio,cTasa,"cDescri,  cCant, cPrecio, cTasa,0,0"
+
+     IF !EMPTY(oTable:MSR_SERIAL)
+        cAuxSerial:=ALLTRIM(oTable:MSR_SERIAL)
+        cDescri   :=cDescri
+     ENDIF
+
+	IF(oTable:MOV_DESCUE<>0,nDesc:=PORCEN(oTable:MOV_PRECIO*oTable:MOV_CANTID,oTable:MOV_DESCUE)) 
+		cDesc    :=ALLTRIM(STR(nDesc,8,2))
+
+		IF(oTable:MOV_DESCUE<>0,nDescT:=nDescT+nDesc)
+
+		cDescriV:=ValidAscii(cDescri)
+
+		//
+		// Detalle del Documento
+		//
+
+		IF oTable:MOV_DESCUE<>0
+			cTicket:=cTicket+"<TEXTO_CF,PVP "+cPrec+" "+cDescu+"% Desc = "+cDesc+",0>"+CRLF
+		ENDIF
+  
+          	cTicket:=cTicket+"<ITEM_CF,"+cDescriV+","+cCant+","+cPrecio+","+cTasa+",0,0>"+CRLF
+
+            //?? cTicket, "cticket en ITEM_CF"
+
+         IF !EMPTY(oTable:MSR_SERIAL) .AND. cTipDoc = "FAV"
+             cTicket:=cTicket+"<TEXTO_CF,Serial: "+cAuxSerial+",0>"+CRLF
+         ENDIF
+         //?? cTicket, "cticket luego del SERIAL"
+		oTable:DbSkip()
+  ENDDO 
+  oTable:Gotop()
+
+//
+// Cierra el Documento
+//
+ 
+  IF oTable:DOC_OTROS<>0
+	  nDocOtr:=oTable:DOC_OTROS
+	  nDescT:=nDescT+nDocOtr
+  ENDIF
+ 
+  IF oTable:DOC_DCTO<>0
+  	  nDocDcto:=oTable:DOC_DCTO
+	  nDescT:=nDescT+PORCEN(nPreTotal,nDocDcto)
+  ENDIF
+  
+  cDescT   :=ALLTRIM(STR(nDescT,8,2))
+  cPagado  :=IIF(nPagado<>0,ALLTRIM(STR(nPagado*100,8,0)),0)
+
+//
+// AGREGA DESCUENTO TOTAL DE LOS ITEMS
+//
+
+  IF nDescT<>0  //.AND. cTipDoc <> "DEV"
+	cTicket:=cTicket+"<TEXTO_CF,UD. AHORRA  "+cDescT+",1>"+CRLF
+  ENDIF
+  //?? cTicket, "luego del AHORRA"
+
+// 
+// APLICAR DESCUENTO AL DOCUMENTO
+//
+
+  IF oTable:DOC_DCTO<>0
+	// 20-08-2008 Marlon Ramos Evitar descuentos erróneos (Ej:descontaba 50% en lugar de 5%) 
+     // cTicket:=cTicket+"<DESCUENTO_PORCENTAJE_CF,"+ALLTRIM(STR(nDocDcto*1000,8,0))+">"+CRLF
+	cTicket:=cTicket+"<DESCUENTO_PORCENTAJE_CF,"+STRZERO(nDocDcto*100,4)+">"+CRLF
+  ENDIF
+  //?? cTicket, "luego del DOC_DCTO"
+
+  IF oTable:DOC_OTROS<>0
+	cTicket:=cTicket+"<DESCUENTO_MONTO_CF,"+ALLTRIM(STR(nDocOtr*100,8,0))+">"+CRLF
+  ENDIF
+
+// 
+// AGREGA EL MONTO PAGADO X EL CLIENTE
+//
+
+  IF cTipDoc <> "DEV" // 11-08-2008 Marlon Ramos 
+     IF nPagado<>0
+	   cTicket:=cTicket+"<PAGO_CF,"+cPagado+">"+CRLF
+     ELSE
+   	   cTicket:=cTicket+"<PAGO_CF,0>"+CRLF
+     ENDIF
+  ENDIF
+
+  //?? cTicket, "luego del PAGADO"
+
+//
+//FIN DEL CF
+//
+
+  cTicket:=cTicket+"<CERRAR_CF>"+CRLF
+  //?? cTicket, "antes de CERRAR"
+
+  cTicket:=cTicket+"<END>"+CRLF
+  //?? cTicket, "despues de END"
+
+  //MsgInfo(cTicket,"Advertencia")
+
+//
+// Refresca los procesos del sistema
+//
+
+WHILE !FILE(cFile)
+  SysRefresh(.T.)
+ENDDO
+
+
+//
+// Crea el Archivo TXT
+//
+
+  nHandler:=fcreate(cFile,FC_NORMAL)
+  fwrite(nHandler,cTicket)
+  fclose(nHandler)
+
+//
+// Refresca los procesos del sistema
+//
+
+WHILE !FILE(cFile)
+  SysRefresh(.T.)
+ENDDO
+
+//
+// Ejecuta el compilado que lee los parametros del TXT y emite el documento
+//
+
+  // 14-01-2017 Marlon Ramos (Decreto 2602 tasa de iva 10% 0 12%)
+     FERASE("CONFIG.DAT")
+
+     DEFAULT oPos:lPagEle:=.F.
+
+     IF oPos:lPagEle   // Documento con el 10% de iva
+        DPWRITE("CONFIG.DAT", "<COM1>" + CRLF + "<TASA,1000>" + CRLF + "<INFILE,dpticket.txt>" + CRLF)
+     ELSE
+//      DPWRITE("CONFIG.DAT", "<COM1>" + CRLF + "<TASA,1200>" + CRLF + "<INFILE,dpticket.txt>" + CRLF)
+        DPWRITE("CONFIG.DAT", "<COM1>" + CRLF + "<TASA,"+cIva+">" + CRLF + "<INFILE,dpticket.txt>" + CRLF)
+     ENDIF
+
+    // 14-01-2017 Marlon Ramos (Decreto 2602 tasa de iva 10% 0 12%)
+
+  WHILE .T.
+
+	CURSORWAIT()
+
+     //?"Imprimiendo posfis.exe"
+       (MsgRun("Imprimiendo Ticket No.:"+cCodTick,"Por Favor Espere",{||WAITRUN("POSFIS.EXE",0)}))
+	  SysRefresh(.T.)
+      cMemo:=MEMOREAD("OUTIF.TXT")
+      //?? cMemo
+      // 19-08-2008 Marlon Ramos (Cuando no tiene papel la PF-300 no imprime el ticket y de todos modos lo marca como impreso en DPDOCCLI)
+        //IF "ERROR 1"$cMemo
+      IF "ERROR 1"$cMemo .OR. IIF("PF-300"$UPPE(oDp:cImpFiscal),"<ERROR POR TIME OUT>"$cMemo,.F.)
+         /*IF MsgYesNo("Desea Imprimir Nuevamente"+CRLF+"Documento no Cerrado","Error en TicKet")
+            LOOP
+         ENDIF
+         */
+
+         // SE INACTIVO
+         //MensajeErr("Ticket: "+cCodTick+" NO se pudo Imprimir"+CRLF+"Intente Imprimirlo desde el Menú: 'Opciones del Punto de Venta'")
+
+      ELSE
+
+        /* 06-08-2008 Marlon Ramos (Evitar actualizar más de un ticket que tengan la misma numeración) 
+           SQLUPDATE("DPDOCCLI","DOC_IMPRES",.T.,"DOC_CODSUC"+GetWhere("=",oDp:cSucursal)+" AND "+;
+                                              "DOC_TIPDOC"+GetWhere("=",cTipDoc      )+" AND "+;
+                                              "DOC_NUMERO"+GetWhere("=",cTicket      ))
+                                              */
+        SQLUPDATE("DPDOCCLI","DOC_IMPRES",.T.,"DOC_CODSUC"+GetWhere("=",oDp:cSucursal)+" AND "+;
+                                              "DOC_TIPDOC"+GetWhere("=",cTipDoc      )+" AND "+;
+                                              "DOC_NUMERO"+GetWhere("=",cCodTick     )+" AND "+;
+                                              "DOC_FECHA "+GetWhere("=",dFecha       )+" AND "+;
+                                              "DOC_HORA  "+GetWhere("=",cHora))
+      ENDIF
+
+      EXIT
+
+  ENDDO
+
+RETURN
+
+
+FUNCTION ValidAscii(cVal) // Quita caracteres que la impresora no puede imprimir
+
+LOCAL I
+LOCAL aNO:={"¾","Ý","Ú","ß",",","á","é","í","ó","ú","ñ","Ñ","§","à",;
+            "è","ì","Ç","ü","â","ä","å","ç","ê","ë","ï","'",'"',"î",;
+            "Ä","Å","É","æ","Æ","ô","ö","ò","û","ù","ÿ","Ö","Ü","ø",;
+            "£","Ø","×","ƒ","ª","º","±","Ð","Ô","Þ","Ã","³","õ","Õ","þ",;
+            "Ù","´"} // No válidos
+
+LOCAL aSi:={"3/4","Y","U","B",".","a","e","i","o","u","n","N","N","a",;
+            "e","i","C","u","a","a","a","c","e","e","i"," "," ","i",;
+            "A","A","E","ae","AE","o","o","o","u","u","y","O","U","o",;
+            "L","O","-","f","a","o","+","D","O","p","A","3","o","O","P",;
+            "U"," "} // Válidos
+
+AEVAL(aNo,{|a,n| cVal:=STRTRAN(cVal,aNo[n],aSi[n]) } )
+
+FOR I=1 TO LEN(cVal)
+  IF ASC(cVal[I])>=167
+    cVal:=STRTRAN(cVal,cVal[I]," ")
+  ENDIF
+  IF ASC(cVal[I])<32
+    cVal:=STRTRAN(cVal,cVal[I]," ")
+  ENDIF
+NEXT I
+
+RETURN cVal
+
+//EOF cp

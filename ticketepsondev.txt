@@ -1,0 +1,255 @@
+// Programa   : TICKETEPSONDEV
+// Fecha/Hora : 25/10/2006 11:21:58
+// Propósito  : Emitir Ticket Fiscal Impresora Epson 
+// Creado Por : CYBERIA SOLUTIONS COMPANY	
+// Llamado por: POSFIS.EXE
+// Aplicación : VENTAS Y CTAS X COBRAR
+// Tabla      : DPMOVINV,DPCLIENTES,DPDOCCLI
+// Fch/Hr Act : 14/10/2006 16:30:58
+
+#INCLUDE "DPXBASE.CH"
+#INCLUDE "FILEIO.CH"
+
+PROCE MAIN(cCodTick,cTipDoc,cCFAso,cNumSer)
+
+LOCAL cFile:="dpticket.txt",oTable,cNomVald,cCant,cPrecio,cTasa,nDesc:=0,nDescT,cMemo:="",cPagado,cCFAsoc,cNumSerial
+LOCAL cTicket:="",cTicketErr,cDesc,cDescT,cDescri,cDescriV:="",nHandler,cPrec,cDescu,nPrecio,cNombre,cRIF,cFecha,cHora
+//LOCAL cCodTick:="0000000192", nPagado:=0  
+LOCAL cFacAsocia, cSerialFis,cAuxSerial, cUS
+
+DEFAULT cCFAso:="",cNumSer:=""
+
+//?? "EpsonDEV", cCodTick,cTipDoc,cCFAso,cNumSer
+
+
+/* 26-01-2009 Marlon Ramos
+   oTable:=OpenTable(" SELECT  MOV_CODIGO,INV_DESCRI,MOV_TOTAL,MOV_PRECIO,MOV_DESCUE,MOV_CANTID,MOV_IVA,CCG_NOMBRE,CCG_RIF,DOC_CODVEN"+;
+			   " FROM DPMOVINV INNER JOIN DPINV ON MOV_CODIGO=INV_CODIGO"+;
+			   " INNER  JOIN DPDOCCLI ON MOV_CODSUC=DOC_CODSUC AND MOV_TIPDOC=DOC_TIPDOC AND DOC_NUMERO=MOV_DOCUME AND DOC_TIPTRA='D'"+;
+			   " LEFT   JOIN DPCLIENTESCERO ON CCG_CODSUC=DOC_CODSUC AND CCG_TIPDOC=DOC_TIPDOC AND CCG_NUMDOC=DOC_NUMERO "+;
+			   " WHERE MOV_TIPDOC"+GetWhere("=",cTipDoc)+;
+			   " AND MOV_DOCUME"+GetWhere("=",cCodTick),.T.)
+   */
+   oTable:=OpenTable(" SELECT  DOC_FACAFE,DOC_CODIGO,DOC_CODSUC,MOV_CODIGO,INV_DESCRI,MOV_TOTAL,MOV_PRECIO,MOV_DESCUE,IF(MSR_SERIAL<>'',1,MOV_CANTID) AS MOV_CANTID,MOV_IVA,MSR_SERIAL,CCG_NOMBRE,CCG_RIF,CLI_NOMBRE,CLI_RIF,DOC_CODVEN"+;
+			   " FROM DPMOVINV INNER JOIN DPINV ON MOV_CODIGO=INV_CODIGO"+;
+                 " LEFT   JOIN DPMOVSERIAL ON MOV_DOCUME=MSR_NUMDOC AND MOV_ITEM=MSR_ITEM AND MOV_TIPDOC=MSR_TIPDOC "+;
+			   " INNER  JOIN DPDOCCLI ON MOV_CODSUC=DOC_CODSUC AND MOV_TIPDOC=DOC_TIPDOC AND DOC_NUMERO=MOV_DOCUME AND DOC_TIPTRA='D'"+;
+			   " LEFT   JOIN DPCLIENTESCERO ON CCG_CODSUC=DOC_CODSUC AND CCG_TIPDOC=DOC_TIPDOC AND CCG_NUMDOC=DOC_NUMERO "+;
+			   " LEFT   JOIN DPCLIENTES     ON CLI_CODIGO=DOC_CODIGO "+;
+			   " WHERE MOV_TIPDOC"+GetWhere("=",cTipDoc)+;
+			   " AND MOV_DOCUME"+GetWhere("=",cCodTick),.T.)
+
+   cUS:=ALLTRIM(oTable:DOC_CODVEN)
+
+   cFacAsocia:=oTable:DOC_FACAFE
+   cSerialFis:=ALLTRIM(SQLGET("DPDOCCLI","DOC_CONDIC,DOC_FECHA,DOC_HORA","DOC_NUMERO"+GetWhere("=",oTable:DOC_FACAFE)+;
+                           " AND DOC_TIPDOC"+GetWhere("=","FAV")+;
+                           " AND DOC_CODIGO"+GetWhere("=",oTable:DOC_CODIGO)+;
+                           " AND DOC_CODSUC"+GetWhere("=",oTable:DOC_CODSUC)))
+
+   IF !Empty(oDp:aRow)
+      cFecha :=LEFT(DTOC(oDp:aRow[2]),6)+RIGHT(DTOC(oDp:aRow[2]),2)
+      cHora  :=oDp:aRow[3]
+   ENDIF
+//Fin 26-01-2009 Marlon Ramos
+
+   //SERIE DE LA IMPRESORA QUE EMITIO EL TICKET
+   cSerialFis:=ALLTRIM(MYSQLGET("DPEQUIPOSPOS","EPV_IMPFIS","EPV_SERIEF='"+LEFT(oTable:DOC_FACAFE,1)+"'"))
+
+// oTable:Browse()rreño
+
+//
+// Inicia el Documento
+// 
+// cNombre:="CARACAS Ñ , AS"
+ // 03-10-2008 Marlon Ramos cNombre    :=ALLTRIM(PADR(oTable:CCG_NOMBRE,20))
+ cNombre    :=ALLTRIM(PADR(IIF(!EMPTY(oTable:CLI_NOMBRE),oTable:CLI_NOMBRE,oTable:CCG_NOMBRE),IIF("PF-300"$oDp:cImpFiscal,38,20)))
+ cRIF       :=ALLTRIM(PADR(IIF(!EMPTY(oTable:CLI_RIF),oTable:CLI_RIF,oTable:CCG_RIF),20))
+
+// Valida que en la cadena hay ",","Ñ","n" y sustituye por ".","N","n"
+
+  cNomVald:=ValidAscii(cNombre)
+
+/* 26-01-2009 Marlon Ramos
+   cFecha:=_VECTOR(DTOC(oDp:dFecha),"/")
+   cFecha:=cFecha[1]+"/"+cFecha[2]+"/"+RIGHT(cFecha[3],2)
+   cHora:=(TIME())
+*/ Fin 26-01-2009 Marlon Ramos
+
+
+// 26-01-2009 Marlon Ramos IF oTable:CCG_NOMBRE<>""
+IF !EMPTY(cNomVald)
+	// 26-01-2009 Marlon Ramos cTicket:=cTicket+"<ABRIR_DEVOLUCION,"+cNomVald+","+cRIF+","+cCFAso+","+cNumSer+","+cFecha+","+cHora+">"+CRLF
+	cTicket:=cTicket+"<ABRIR_DEVOLUCION,"+cNomVald+","+cRIF+","+cFacAsocia+","+cSerialFis+","+cFecha+","+cHora+">"+CRLF
+ELSE
+// 26-01-2009 Marlon Ramos 	cTicket:=cTicket+"<ABRIR_DEVOLUCION,.,.,"+cCFAso+","+cNumSer+","+cFecha+","+cHora+">"+CRLF
+	cTicket:=cTicket+"<ABRIR_DEVOLUCION,.,.,"+cFacAsocia+","+cSerialFis+","+cFecha+","+cHora+">"+CRLF
+ENDIF
+
+//NUMERO DE DEVOLUCION DEL SISTEMA CARREÑO
+    cTicket:=cTicket+"<TEXTO_CF,NOTA CREDITO #: "+cCodTick+" VEND.:"+cUS+",0>"+CRLF 
+    cTicket:=cTicket+"<TEXTO_CF,"+REPL("-",40)+",0>"+CRLF
+//	
+// Valores del Detalle del Documento
+//
+   WHILE !oTable:Eof()
+
+    cCant    :=ALLTRIM(STR(oTable:MOV_CANTID*1000,8,0))
+    nPrecio  :=(oTable:MOV_TOTAL/oTable:MOV_CANTID)
+    cPrecio  :=ALLTRIM(STR(nPrecio*100,8,0))
+    cTasa    :=AllTRIM(STR(IIF(oTable:MOV_IVA<>0,cTasa:=1,cTasa:=0)))
+    // 03-10-2008 Marlon Ramos cDescri  :=ALLTRIM(PADR(oTable:INV_DESCRI,20))
+    cDescri  :=ALLTRIM(PADR(oTable:INV_DESCRI,IIF("PF-300"$oDp:cImpFiscal,36,20)))
+
+    IF(oTable:MOV_DESCUE<>0,nDesc:=PORCEN(oTable:MOV_PRECIO*oTable:MOV_CANTID,oTable:MOV_DESCUE)) 
+    
+        IF !EMPTY(oTable:MSR_SERIAL)
+           cAuxSerial:=ALLTRIM(oTable:MSR_SERIAL)
+         //  cDescri   :=cDescri
+        ENDIF
+
+      cDescriV:=ValidAscii(cDescri)
+      //?? cDescriV,"cDescriV"
+      cTicket:=cTicket+"<ITEM_CF,"+cDescriV+","+cCant+","+cPrecio+","+cTasa+",0,0>"+CRLF
+
+      /* posibilidad de Imprimir el Serial Devuelto 
+      IF !EMPTY(oTable:MSR_SERIAL)
+         cTicket:=cTicket+"<TEXTO_CF,Serial: "+cAuxSerial+",0>"+CRLF
+      ENDIF
+      */
+
+    oTable:DbSkip()
+  ENDDO 
+  oTable:Gotop()
+
+//
+// Cierra el Documento
+//
+
+	cTicket:=cTicket+"<CERRAR_CF>"+CRLF
+	cTicket:=cTicket+"<END>"+CRLF
+
+//
+// Crea el Archivo TXT
+//
+
+  nHandler:=fcreate(cFile,FC_NORMAL)
+  fwrite(nHandler,cTicket)
+  fclose(nHandler)
+
+//
+// Refresca los procesos del sistema
+//
+
+WHILE !FILE(cFile)
+  SysRefresh(.T.)
+ENDDO
+
+//
+// Ejecuta el compilado que lee los parametros del TXT y emite el documento
+//
+/*
+ WHILE .T.
+	CURSORWAIT()
+       (MsgRun("Imprimiendo Devolución Nº: "+cCodTick,"Por Favor Espere",{||WAITRUN("BIN\POSFIS.EXE",0)}))
+	  SysRefresh(.T.)
+      cMemo:=MEMOREAD("OUTIF.TXT")
+      IF "ERROR 1"$cMemo .OR. IIF("PF-300"$UPPE(oDp:cImpFiscal),"<ERROR POR TIME OUT>"$cMemo,.F.)
+         //IF MsgYesNo("Desea Imprimir Nuevamente"+CRLF+"Documento no Cerrado","Error en TicKet")
+
+           // LOOP
+        // ENDIF
+        
+          MensajeErr("Ticket: "+cCodTick+" NO se pudo Imprimir"+CRLF+"Intente Imprimirlo desde el Menú: 'Opciones del Punto de Venta'")
+      ELSE
+*/
+  WHILE .T.
+	CURSORWAIT()
+       (MsgRun("Imprimiendo Devolución Nº: "+cCodTick,"Por Favor Espere",{||WAITRUN("BIN\POSFIS.EXE",0)}))
+	  SysRefresh(.T.)
+      cMemo:=MEMOREAD("OUTIF.TXT")
+      IF "ERROR 1"$cMemo
+         IF MsgYesNo("Desea Imprimir Nuevamente"+CRLF+"Documento no Cerrado","Error en TicKet")
+
+            LOOP
+         ENDIF
+
+      ELSE
+
+        SQLUPDATE("DPDOCCLI","DOC_IMPRES",1,"DOC_CODSUC"+GetWhere("=",oDp:cSucursal)+" AND "+;
+                                              "DOC_TIPDOC"+GetWhere("=",cTipDoc      )+" AND "+;
+                                              "DOC_NUMERO"+GetWhere("=",cTicket      ))
+
+      ENDIF
+
+      EXIT
+
+  ENDDO
+
+RETURN
+
+
+FUNCTION ValidAscii(cVal) // Quita caracteres que la impresora no puede imprimir
+
+LOCAL I
+LOCAL aNO:={",","ß","Ú","Ý","¾","·","±","Ð","º","Ó","Þ","ý","Ã","³","Ô","õ","Õ","þ","Û","Ù","´","'",'"'} // No vßlidos
+LOCAL aSi:={".","a","e","i","o","u","n","N","N","a","e","i","C","u","a","a","a","c","e","e","i"," "," "} // Vßlidos
+
+AEVAL(aNo,{|a,n| cVal:=STRTRAN(cVal,aNo[n],aSi[n]) } )
+
+FOR I=1 TO LEN(cVal)
+  IF ASC(cVal[I])>=167
+    cVal:=STRTRAN(cVal,cVal[I],"")
+  ENDIF
+  IF ASC(cVal[I])<32
+    cVal:=STRTRAN(cVal,cVal[I],"")
+  ENDIF
+NEXT I
+
+RETURN cVal
+
+/*       CASE "¯"$cVal
+,"¯","-"
+,"i","A"
+
+
+       CASE "+"$cVal
+       cVal:=STRTRAN(cVal,"+","A") // ascii 143
+       CASE "+"$cVal
+       cVal:=STRTRAN(cVal,"+","E") // ascii 144
+       CASE "µ"$cVal
+       cVal:=STRTRAN(cVal,"µ","ae") // ascii 145
+       CASE "ã"$cVal
+       cVal:=STRTRAN(cVal,"ã","AE") // ascii 146
+       CASE "¶"$cVal
+       cVal:=STRTRAN(cVal,"¶","o") // ascii 147
+       CASE "÷"$cVal
+       cVal:=STRTRAN(cVal,"÷","o") // ascii 148
+       CASE "="$cVal
+       cVal:=STRTRAN(cVal,"=","o") // ascii 149
+       CASE "¹"$cVal
+       cVal:=STRTRAN(cVal,"¹","u") // ascii 150
+       CASE "¨"$cVal
+       cVal:=STRTRAN(cVal,"¨","u") // ascii 151
+       CASE " "$cVal
+       cVal:=STRTRAN(cVal," ","y") // ascii 152
+       CASE "Í"$cVal
+       cVal:=STRTRAN(cVal,"Í","O") // ascii 153
+       CASE "_"$cVal
+       cVal:=STRTRAN(cVal,"_","U") // ascii 154
+       CASE "°"$cVal
+       cVal:=STRTRAN(cVal,"°","o") // ascii 155
+       CASE "ú"$cVal
+       cVal:=STRTRAN(cVal,"ú","L") // ascii 156
+       CASE "Ï"$cVal
+       cVal:=STRTRAN(cVal,"Ï","O") // ascii 157
+       CASE "Î"$cVal
+       cVal:=STRTRAN(cVal,"Î","-") // ascii 158
+       CASE "â"$cVal
+       cVal:=STRTRAN(cVal,"â","f") // ascii 159
+       CASE "¬"$cVal
+       cVal:=STRTRAN(cVal,"¬","a") // ascii 166
+       CASE "¦"$cVal
+       cVal:=STRTRAN(cVal,"¦","o") // ascii 167
+ OTHER
+*/

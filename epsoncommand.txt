@@ -1,0 +1,146 @@
+// Programa   : Opciones de Epson Fiscal
+// Fecha/Hora : 07/10/2006 16:17:57
+// Propósito  : Emitir Reporte Z
+// Creado Por : CYBERIA SOLUTIONS COMPANY
+// Llamado por: 
+// Aplicación : VENTAS Y CTAS X COBRAR
+// Tabla      :
+
+#INCLUDE "DPXBASE.CH"
+#INCLUDE "FILEIO.CH"
+
+FUNCTION MAIN(cRep,cTip)
+
+LOCAL cDescri:=SPACE(40),cTipo:=SPACE(1),cLinea:=SPACE(1),cModif:=SPACE(1),oDlg
+LOCAL cFile:="dpticket.txt",nHandler,cTicket:="",oFontB,lMesg:=.F.
+//LOCAL cRep:="X"
+
+   
+IF cTip="Msg"
+
+   DEFINE FONT oFontB NAME "Arial"   SIZE 0,-12 BOLD 
+   DEFINE DIALOG oDlg TITLE "Mensajes de Pie de Pagina y Encabezado" 
+
+   @ 0.1,1 	SAY "ADVERTENCIA!!! :" FONT oFontB
+   @ 0.1,10 SAY 'Debe realizarse después de un " Z "' COLOR CLR_BLUE
+   @ 0.7,3 SAY ' Escriba                          para borrar una linea' COLOR CLR_BLUE
+   @ 0.7,6.8 SAY  '" ELIMINAR "' COLOR CLR_HRED SIZE 34,10
+   @ 0.8,1  	SAY " 1" COLOR CLR_BLUE  FONT oFontB
+   @ 0.8,21.6 SAY " 2 " COLOR CLR_BLUE  FONT oFontB
+   @ 0.8,22.8 SAY " 3 " COLOR CLR_BLUE  FONT oFontB
+   @ 0.8,24 	SAY " 4 " COLOR CLR_BLUE  FONT oFontB
+
+   @ 1.8,0.5  BMPGET cDescri  SIZE 124,10 COLOR CLR_BLUE
+   @ 1.8,16.2 BMPGET cTipo    SIZE 6,10 COLOR CLR_BLUE
+   @ 1.8,17   BMPGET cLinea   SIZE 6,10 COLOR CLR_BLUE
+   @ 1.8,18   BMPGET cModif   SIZE 6,10 COLOR CLR_BLUE
+
+   @ 2.3,1 SAY "Leyenda : " 							COLOR CLR_BLUE  FONT oFontB
+   @ 2.8,1 SAY "1. Descripción " 						COLOR CLR_BLUE 
+   @ 3.3,1 SAY "2. Encab (0),Pie (1) " 					COLOR CLR_BLUE 
+   @ 3.8,1 SAY "3. No. Linea (1-5) " 					COLOR CLR_BLUE 
+   @ 4.3,1 SAY "4. Normal(0), Resaltado(1), Rojo(2), Roj+Res(3) " COLOR CLR_BLUE
+
+
+   @ 2.3,20   BUTTON "Enviar" ACTION {||Msg(cDescri,cTipo,cLinea,cModif)}
+
+
+   ACTIVATE DIALOG oDlg CENTERED
+
+RETURN 
+
+ELSE
+
+DO CASE
+	CASE cRep="Open_CF"
+		cTicket:=cTicket+"<ABRIR_CF>"+CRLF
+	CASE cRep="Close_CF"
+		cTicket:=cTicket+"<CERRAR_CF>"+CRLF
+	CASE cRep="Cancel_CF"
+		cTicket:=cTicket+"<CANCELAR_CF>"+CRLF
+	CASE cRep="X"
+		cTicket:=cTicket+"<REPORTE_X>"+CRLF
+	CASE cRep="Z"
+		cTicket:=cTicket+"<REPORTE_Z>"+CRLF
+	CASE cRep="Test_AF"
+		cTicket:=cTicket+"<ABRIR_DNF>"+CRLF
+		cTicket:=cTicket+"<TEXTO_DNF, PRUEBA DE CONEXION,1>"+CRLF
+		cTicket:=cTicket+"<TEXTO_DNF,FELICIDADES SI PUEDE LEER ESTE DOCUMENTO,0>"+CRLF
+		cTicket:=cTicket+"<TEXTO_DNF,"+REPL(" ",11)+"SU TMU220 AF ESTA...,0>"+CRLF
+		cTicket:=cTicket+"<TEXTO_DNF,,0>"+CRLF
+		cTicket:=cTicket+"<TEXTO_DNF,"+REPL(" ",7)+"LISTA!!!,1>"+CRLF
+		cTicket:=cTicket+"<CERRAR_DNF>"+CRLF
+	CASE cRep="Avanza"
+		cTicket:=cTicket+"<AVANZA_PAPEL>"+CRLF
+	CASE cRep="Corta"
+		cTicket:=cTicket+"<CORTA_PAPEL>"+CRLF
+	CASE cRep="Gaveta"
+		cTicket:=cTicket+"<GAVETA_A>"+CRLF
+	CASE cRep="Msgrun"
+		cTicket:=cTicket+"<MENSAJES,"+cDescri+","+cTipo+","+cLinea+","+cModif+">"+CRLF
+ENDCASE
+	cTicket:=cTicket+"<END>"+CRLF
+
+//
+// Crea el Archivo TXT
+//
+
+  nHandler:=fcreate(cFile,FC_NORMAL)
+  fwrite(nHandler,cTicket)
+  fclose(nHandler)
+
+//
+// Refresca los procesos del sistema
+//
+//MsgInfo("Comandos para la impresora"+CRLF+ cTicket,"Advertencia")
+WHILE !FILE(cFile)
+  SysRefresh(.T.)
+ENDDO
+
+//
+// Ejecuta el compilado que lee los parametros del TXT y emite el documento
+//
+      IF cRep<>"Avanza"
+	(MsgRun("Imprimiendo Reporte   "+cRep,"Por Favor Espere",{||WAITRUN("BIN\POSFIS.EXE",0)}))
+	ELSE
+	WAITRUN("BIN\POSFIS.EXE",0)
+	ENDIF
+
+RETURN
+
+ENDIF
+
+FUNCTION Msg(cDescri,cTipo,cLinea,cModif)
+LOCAL cComment
+
+IIF("ELIMINAR"$cDescri,cComment:="",cComment:=cDescri)
+
+	cTicket:=cTicket+"<MENSAJES,"+cComment+","+cTipo+","+cLinea+","+cModif+">"+CRLF
+	cTicket:=cTicket+"<END>"+CRLF
+//
+// Crea el Archivo TXT
+//
+
+  nHandler:=fcreate(cFile,FC_NORMAL)
+  fwrite(nHandler,cTicket)
+  fclose(nHandler)
+
+//
+// Refresca los procesos del sistema
+//
+//MsgInfo("Comandos para la impresora"+CRLF+ cTicket,"Advertencia")
+WHILE !FILE(cFile)
+  SysRefresh(.T.)
+ENDDO
+
+//
+// Ejecuta el compilado que lee los parametros del TXT y emite el documento
+//
+      IF cRep<>"Avanza"
+	(MsgRun("Imprimiendo Reporte   "+cRep,"Por Favor Espere",{||WAITRUN("BIN\POSFIS.EXE",0)}))
+	ELSE
+	WAITRUN("BIN\POSFIS.EXE",0)
+	ENDIF
+
+RETURN oDlg:End()
+
